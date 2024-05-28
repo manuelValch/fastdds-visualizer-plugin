@@ -78,7 +78,7 @@ bool FastDdsDataStreamer::start(
     configuration_ = select_topics_dialog_.get_configuration();
     // Store as default configuration
     configuration_.save_default_settings(CONFIGURATION_SETTINGS_PREFIX_);
-
+    
     // Topics selected
     const auto& topics = configuration_.topics_selected;  // Decorator variable to avoid calling internal member
 
@@ -96,27 +96,9 @@ bool FastDdsDataStreamer::start(
             configuration_.data_type_configuration);
     }
 
-    // Get all series from topics and create them
-    // NUMERIC
-    std::vector<types::DatumLabel> numeric_series = fastdds_handler_.numeric_data_series_names();
-    for (const auto& series : numeric_series)
-    {
-        // Create a series
-        DEBUG("Creating numeric series: " << series);
-        dataMap().addNumeric(series);
-    }
+    running_ = timeSeriesCreation();
 
-    // STRING
-    std::vector<types::DatumLabel> string_series = fastdds_handler_.string_data_series_names();
-    for (const auto& series : string_series)
-    {
-        // Create a series
-        DEBUG("Creating string series: " << series);
-        dataMap().addStringSeries(series);
-    }
-
-    running_ = true;
-    return true;
+    return running_;
 }
 
 void FastDdsDataStreamer::shutdown()
@@ -253,6 +235,30 @@ void FastDdsDataStreamer::connect_to_domain_(
     // Connect to domain
     fastdds_handler_.connect_to_domain(domain_id);
     select_topics_dialog_.connect_to_domain(domain_id);
+}
+
+bool FastDdsDataStreamer::timeSeriesCreation()
+{
+
+    // Get all series from topics and create them
+    // NUMERIC
+    std::vector<types::DatumLabel> numeric_series = fastdds_handler_.numeric_data_series_names();
+    for (const auto& series : numeric_series)
+    {
+        // Create a series
+        DEBUG("Creating numeric series: " << series);
+        dataMap().addNumeric(series);
+    }
+
+    // STRING
+    std::vector<types::DatumLabel> string_series = fastdds_handler_.string_data_series_names();
+    for (const auto& series : string_series)
+    {
+        // Create a series
+        DEBUG("Creating string series: " << series);
+        dataMap().addStringSeries(series);
+    }
+    return true;
 }
 
 } /* namespace datastreamer */
