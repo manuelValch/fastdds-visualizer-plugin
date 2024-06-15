@@ -245,18 +245,38 @@ bool FastDdsDataStreamer::timeSeriesCreation()
     std::vector<types::DatumLabel> numeric_series = fastdds_handler_.numeric_data_series_names();
     for (const auto& series : numeric_series)
     {
+        std::size_t char_id = series.find_first_of("/");
+        std::string topic_name = series.substr(0U, char_id);
+        std::string series_name = series.substr(char_id);
+
+        if (plot_groups_.end() == plot_groups_.find(topic_name))
+        {
+            // Create plotjuggler group
+            DEBUG("Creating plotjuggler group: " << topic_name);
+            plot_groups_.insert({topic_name, std::make_shared<PJ::PlotGroup>(topic_name)});
+        }
         // Create a series
-        DEBUG("Creating numeric series: " << series);
-        dataMap().addNumeric(series);
+        DEBUG("Creating numeric series: " << series_name);
+        dataMap().addNumeric(series_name, plot_groups_.at(topic_name));
     }
 
     // STRING
     std::vector<types::DatumLabel> string_series = fastdds_handler_.string_data_series_names();
     for (const auto& series : string_series)
     {
+        std::size_t char_id = series.find_first_of("/");
+        std::string topic_name = series.substr(0U, char_id);
+        std::string series_name = series.substr(char_id);
+
+        if (plot_groups_.end() == plot_groups_.find(topic_name))
+        {
+            // Create plotjuggler group
+            DEBUG("Creating plotjuggler group: " << topic_name);
+            plot_groups_.insert({topic_name, std::make_shared<PJ::PlotGroup>(topic_name)});
+        }
         // Create a series
-        DEBUG("Creating string series: " << series);
-        dataMap().addStringSeries(series);
+        DEBUG("Creating string series: " << series_name);
+        dataMap().addStringSeries(series_name, plot_groups_.at(topic_name));
     }
     return true;
 }

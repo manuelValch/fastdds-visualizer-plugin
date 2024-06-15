@@ -148,6 +148,8 @@ protected:
     bool running_;
 
     constexpr static const char* CONFIGURATION_SETTINGS_PREFIX_ = "FastDDSVisualizerPlugin";
+
+    std::unordered_map<std::string, std::shared_ptr<PJ::PlotGroup>> plot_groups_;
 };
 
 } /* namespace datastreamer */
