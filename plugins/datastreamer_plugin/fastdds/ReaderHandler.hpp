@@ -132,6 +132,8 @@ public:
 
     std::atomic<bool> stop_;
 
+    std::atomic<bool> is_keyed_;
+
     utils::TypeIntrospectionCollection numeric_data_info_;
     utils::TypeIntrospectionCollection string_data_info_;
 
