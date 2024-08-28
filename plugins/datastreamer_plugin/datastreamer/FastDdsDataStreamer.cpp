@@ -96,7 +96,7 @@ bool FastDdsDataStreamer::start(
             configuration_.data_type_configuration);
     }
 
-    running_ = timeSeriesCreation();
+    running_ = pjGroupCreation();
 
     return running_;
 }
@@ -139,6 +139,55 @@ bool FastDdsDataStreamer::xmlLoadState(
     return configuration_.xmlLoadState(parent_element);
 }
 
+
+void FastDdsDataStreamer::onNewInstance(const std::string& topic_name, const std::string& instance_name)
+{
+
+
+    // First we need to now which series belong to the instance and then register them
+    // this will all be name based, i.e on topic name
+    std::vector<types::DatumLabel> numeric_series = fastdds_handler_.numeric_data_series_names();
+    std::vector<types::DatumLabel> string_series = fastdds_handler_.string_data_series_names();
+
+    // get Pj group serie belong to
+    
+    // NUMERIC
+    for (const auto& series : numeric_series)
+    {
+        std::size_t char_id = series.find_first_of("/");
+        std::string topic_name = series.substr(0U, char_id);
+        std::string series_name = series.substr(char_id);
+
+        if (plot_groups_.end() == plot_groups_.find(topic_name))
+        {
+            // Create plotjuggler group
+            DEBUG("Creating plotjuggler group: " << topic_name);
+            plot_groups_.insert({topic_name, std::make_shared<PJ::PlotGroup>(topic_name)});
+        }
+        // Create a series
+        DEBUG("Creating numeric series: " << series_name);
+        dataMap().addNumeric(series_name, plot_groups_.at(topic_name));
+    }
+
+    // STRING
+    for (const auto& series : string_series)
+    {
+        std::size_t char_id = series.find_first_of("/");
+        std::string topic_name = series.substr(0U, char_id);
+        std::string series_name = series.substr(char_id);
+
+        if (plot_groups_.end() == plot_groups_.find(topic_name))
+        {
+            // Create plotjuggler group
+            DEBUG("Creating plotjuggler group: " << topic_name);
+            plot_groups_.insert({topic_name, std::make_shared<PJ::PlotGroup>(topic_name)});
+        }
+        // Create a series
+        DEBUG("Creating string series: " << series_name);
+        dataMap().addStringSeries(series_name, plot_groups_.at(topic_name));
+    }
+}
+
 ////////////////////////////////////////////////////
 // FASTDDS LISTENER METHODS
 ////////////////////////////////////////////////////
@@ -156,10 +205,25 @@ void FastDdsDataStreamer::on_double_data_read(
     {
         DEBUG("Adding to numeric series " << data.first << " value " << data.second << " with timestamp " << timestamp);
 
-        // Get data map
-        auto& series = dataMap().numeric.find(data.first)->second;
-        // Add data to series
-        series.pushBack( { timestamp, data.second});
+        //Find to which group it belong
+        std::string group = data_per_topic_value[0U].first;
+        std::size_t char_id = group.find_first_of("/");
+        std::string topic_name = group.substr(0U, char_id);
+        std::string series_name = group.substr(char_id);
+
+        if (plot_groups_.end() == plot_groups_.find(topic_name))
+        {
+            // Create plotjuggler group
+            WARNING("Received not registered topic: " << topic_name);
+        }
+        else
+        {
+            // Get data map
+            auto& series = dataMap().numeric.find(series_name)->second;
+            // Add data to series
+            series.pushBack( { timestamp, data.second});
+        }
+
     }
 
     emit dataReceived();
@@ -178,10 +242,24 @@ void FastDdsDataStreamer::on_string_data_read(
     {
         DEBUG("Adding to string series " << data.first << " value " << data.second << " with timestamp " << timestamp);
 
-        // Get data map
-        auto& series = dataMap().strings.find(data.first)->second;
-        // Add data to series
-        series.pushBack( { timestamp, data.second});
+        //Find to which group it belong
+        std::string group = data_per_topic_value[0U].first;
+        std::size_t char_id = group.find_first_of("/");
+        std::string topic_name = group.substr(0U, char_id);
+        std::string series_name = group.substr(char_id);
+
+        if (plot_groups_.end() == plot_groups_.find(topic_name))
+        {
+            // Create plotjuggler group
+            WARNING("Received not registered topic: " << topic_name);
+        }
+        else
+        {
+            // Get data map
+            auto& series = dataMap().strings.find(series_name)->second;
+            // Add data to series
+            series.pushBack( { timestamp, data.second});
+        }
     }
 
     emit dataReceived();
@@ -237,7 +315,7 @@ void FastDdsDataStreamer::connect_to_domain_(
     select_topics_dialog_.connect_to_domain(domain_id);
 }
 
-bool FastDdsDataStreamer::timeSeriesCreation()
+bool FastDdsDataStreamer::pjGroupCreation()
 {
 
     // Get all series from topics and create them

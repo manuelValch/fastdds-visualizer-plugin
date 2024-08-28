@@ -88,6 +88,8 @@ public:
     bool xmlLoadState(
             const QDomElement& parent_element) override;
 
+    void onNewInstance(const std::string& topic_name, const std::string& instance_name);
+
     ////////////////////////////////////////////////////
     // FASTDDS LISTENER METHODS
     ////////////////////////////////////////////////////
@@ -133,7 +135,7 @@ protected:
             unsigned int domain_id);
 
 
-    bool timeSeriesCreation();
+    bool pjGroupCreation();
 
     ////////////////////////////////////////////////////
     // INTERNAL VALUES
