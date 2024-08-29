@@ -53,7 +53,8 @@ public:
             eprosima::fastdds::dds::DataReader* datareader,
             eprosima::fastrtps::types::DynamicType_ptr type,
             FastDdsListener* listener,
-            const DataTypeConfiguration& data_type_configuration);
+            const DataTypeConfiguration& data_type_configuration,
+            const bool& is_Keyed);
 
 
     virtual ~ReaderHandler();

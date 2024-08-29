@@ -43,19 +43,19 @@ ReaderHandler::ReaderHandler(
         eprosima::fastdds::dds::DataReader* datareader,
         eprosima::fastrtps::types::DynamicType_ptr type,
         FastDdsListener* listener,
-        const DataTypeConfiguration& data_type_configuration)
+        const DataTypeConfiguration& data_type_configuration,
+        const bool& is_Keyed)
     : topic_(topic)
     , reader_(datareader)
     , type_(type)
     , listener_(listener)
     , stop_(false)
-    , is_keyed_(false)
+    , is_keyed_(is_Keyed)
 {
     // Create data so it is not required to create it each time and avoid reallocation if possible
     data_ = eprosima::fastrtps::types::DynamicDataFactory::get_instance()->create_data(type_);
 
-    // find out if the topic is keyed or not
-    is_keyed_ = type_->key_annotation();
+    auto refDesc = type_->get_descriptor();
     if (true == is_keyed_)
     {
         DEBUG("\tTopic: " << topic->get_name() << " has key: " << std::to_string(is_keyed_));

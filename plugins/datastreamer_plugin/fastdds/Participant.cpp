@@ -189,6 +189,12 @@ void Participant::create_subscription(
     // Get Dyn Type for type
     // This could not fail, as we know type is registered
     eprosima::fastrtps::types::DynamicType_ptr dyn_type = get_type_registered_(type_name);
+    // In order to find out if the topic is keyed or not, create a dynamicPubSubType and then 
+    std::string topicName = topic->get_type_name();
+    eprosima::fastrtps::types::DynamicPubSubType* pIsKeyType = 
+    eprosima::fastrtps::xmlparser::XMLProfileManager::CreateDynamicPubSubType(topicName);
+    bool is_keyed = pIsKeyType->m_isGetKeyDefined;
+    eprosima::fastrtps::xmlparser::XMLProfileManager::DeleteDynamicPubSubType(pIsKeyType);
 
     // Create Reader Handler with all this information and add it to readers
     // Create it with specific deleter for reader and topic
@@ -198,7 +204,8 @@ void Participant::create_subscription(
             datareader,
             dyn_type,
             listener_,
-            data_type_configuration),
+            data_type_configuration,
+            is_keyed),
         ReaderHandlerDeleter(participant_, subscriber_)
         );
 
