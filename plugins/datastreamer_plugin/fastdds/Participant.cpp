@@ -179,16 +179,7 @@ void Participant::create_subscription(
         topic_name,
         type_name,
         default_topic_qos_());
-
-    // Create datareader
-    eprosima::fastdds::dds::DataReader* datareader = subscriber_->create_datareader(
-        topic,
-        default_datareader_qos_(),
-        this);     // Mask not required
-
-    // Get Dyn Type for type
-    // This could not fail, as we know type is registered
-    eprosima::fastrtps::types::DynamicType_ptr dyn_type = get_type_registered_(type_name);
+    
     // In order to find out if the topic is keyed or not, create a dynamicPubSubType and then 
     std::string topicName = topic->get_type_name();
     eprosima::fastrtps::types::DynamicPubSubType* pIsKeyType = 
@@ -196,24 +187,56 @@ void Participant::create_subscription(
     bool is_keyed = pIsKeyType->m_isGetKeyDefined;
     eprosima::fastrtps::xmlparser::XMLProfileManager::DeleteDynamicPubSubType(pIsKeyType);
 
-    // Create Reader Handler with all this information and add it to readers
-    // Create it with specific deleter for reader and topic
-    ReaderHandlerReference new_reader(
-        new ReaderHandler(
-            topic,
-            datareader,
-            dyn_type,
-            listener_,
-            data_type_configuration,
-            is_keyed),
-        ReaderHandlerDeleter(participant_, subscriber_)
-        );
+    // Get Qos of the data reader, which is going to be different if keyed
+    eprosima::fastdds::dds::DataReaderQos readerQos = default_datareader_qos_();
+    
+    // Retreive dataReader for a keyed topic only 1 reader is needed
+    eprosima::fastdds::dds::DataReader* datareader = nullptr;
+    if (true == is_keyed)
+    {
+        keyed_dataReader_qos_(readerQos);
+        DEBUG("Topic: " << topic->get_name() << " is keyed");
+        datareader = this->subscriber_->lookup_datareader(topicName);
+    }
 
-    // Insert this new Reader Handler indexed by topic name
-    readers_.insert(
-        std::make_pair(
-            topic_name,
-            std::move(new_reader)));
+    // Create it if not found which also applies when is_keyed is false
+    if (nullptr == datareader)
+    {
+        datareader = subscriber_->create_datareader(
+            topic,
+            readerQos,
+            this);     // Mask not required
+    }
+
+    // Get Dyn Type for type
+    // This could not fail, as we know type is registered
+    eprosima::fastrtps::types::DynamicType_ptr dyn_type = get_type_registered_(type_name);
+
+    if (nullptr != datareader)
+    {
+        // Create Reader Handler with all this information and add it to readers
+        // Create it with specific deleter for reader and topic
+        ReaderHandlerReference new_reader(
+            new ReaderHandler(
+                topic,
+                datareader,
+                dyn_type,
+                listener_,
+                data_type_configuration,
+                is_keyed),
+            ReaderHandlerDeleter(participant_, subscriber_)
+            );
+
+        // Insert this new Reader Handler indexed by topic name
+        readers_.insert(
+            std::make_pair(
+                topic_name,
+                std::move(new_reader)));
+        }
+    else
+    {
+        WARNING("No valid reader has been found or created for: " << topic_name);
+    }
 }
 
 ////////////////////////////////////////////////////
@@ -527,6 +550,18 @@ eprosima::fastdds::dds::DataReaderQos Participant::default_datareader_qos_()
             eprosima::fastdds::dds::DATAREADER_QOS_DEFAULT;
 
     return qos;
+}
+
+void Participant::keyed_dataReader_qos_(eprosima::fastdds::dds::DataReaderQos& Qos)
+{
+    Qos.endpoint().history_memory_policy = eprosima::fastrtps::rtps::DYNAMIC_RESERVE_MEMORY_MODE;
+    Qos.history().kind = eprosima::fastdds::dds::KEEP_ALL_HISTORY_QOS;
+    Qos.durability().kind = eprosima::fastdds::dds::VOLATILE_DURABILITY_QOS;
+    Qos.reliability().kind = eprosima::fastdds::dds::RELIABLE_RELIABILITY_QOS;
+    Qos.resource_limits().max_samples = 100;
+    Qos.resource_limits().allocated_samples = 100;
+    Qos.resource_limits().max_instances = 5;
+    Qos.resource_limits().max_samples_per_instance = 20;
 }
 
 eprosima::fastdds::dds::TopicQos Participant::default_topic_qos_()

@@ -173,6 +173,11 @@ protected:
     static eprosima::fastdds::dds::DataReaderQos default_datareader_qos_();
 
     /**
+     * @brief add keyed topic QOS to a default one for a dataReader
+     */
+    static void keyed_dataReader_qos_(eprosima::fastdds::dds::DataReaderQos& Qos);
+
+    /**
      * @brief Get default mask
      *
      * Callbacks accepted by this mask:
