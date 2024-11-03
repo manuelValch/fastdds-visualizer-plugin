@@ -78,6 +78,13 @@ public:
 
     void on_data_available(
             eprosima::fastdds::dds::DataReader* reader) override;
+    
+    void on_data_keyed(
+            const std::string& topic_name,
+            const eprosima::fastdds::dds::SampleInfo& sample_info);
+
+    void process_received_data(
+            const eprosima::fastdds::dds::SampleInfo& sample_info);
 
 
     ////////////////////////////////////////////////////
@@ -92,6 +99,18 @@ public:
 
     std::vector<types::DatumLabel> string_data_series_names() const;
 
+    ////////////////////////////////////////////////////
+    // AUXILIAR METHODS
+    ////////////////////////////////////////////////////
+
+    /**
+     * @brief createTypeInstrospection for a specific data
+     *
+     * @param topic_name, name of the topic on which type intro needs to be created
+     *
+     * @param key, to be added to topic name default ""
+     */
+    void createTypeInstrospection(const std::string& topic_name, const std::string& key="");
 
     ////////////////////////////////////////////////////
     // AUXILIAR STATIC METHODS
@@ -140,6 +159,11 @@ public:
 
     utils::TypeIntrospectionNumericStruct numeric_data_;
     utils::TypeIntrospectionStringStruct string_data_;
+
+    /**
+     * @brief data_type_configurations_, hold topic name as key and a reference to a data type configuration
+     */
+    std::unordered_map<std::string,const DataTypeConfiguration*> data_type_configurations_;
 };
 
 } /* namespace fastdds */

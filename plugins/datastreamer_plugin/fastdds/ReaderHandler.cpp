@@ -56,33 +56,16 @@ ReaderHandler::ReaderHandler(
     data_ = eprosima::fastrtps::types::DynamicDataFactory::get_instance()->create_data(type_);
 
     auto refDesc = type_->get_descriptor();
-    // Create the static structures to store the data introspection information AND the data itself
-    utils::get_introspection_type_names(
-        topic_name(),
-        type_,
-        data_type_configuration,
-        numeric_data_info_,
-        string_data_info_);
 
-    // Create the data structures so they are not copied in the future
-    for (const auto& info : numeric_data_info_)
+    // Save data type configuration for latter use
+    data_type_configurations_[topic_name()] = &data_type_configuration;
+
+    // if topic is not keyed then structure of data can be created right away otherwise we need to wait for data to arrive
+    if (false == is_keyed_)
     {
-        numeric_data_.push_back({ std::get<0>(info), 0});
-    }
-    for (const auto& info : string_data_info_)
-    {
-        string_data_.push_back({ std::get<0>(info), "-"});
+        createTypeInstrospection(topic_name());
     }
 
-    DEBUG("Reader created in topic: " << topic_name() << " with types: ");
-    for (const auto& info : numeric_data_info_)
-    {
-        DEBUG("\tNumeric: " << std::get<0>(info));
-    }
-    for (const auto& info : string_data_info_)
-    {
-        DEBUG("\tString: " << std::get<0>(info));
-    }
 
     // Set this object as this reader's listener
     reader_->set_listener(this);
@@ -93,7 +76,7 @@ ReaderHandler::~ReaderHandler()
     // Stop the reader
     stop();
 
-    // Delete created data 
+    // Delete created data
     eprosima::fastrtps::types::DynamicDataFactory::get_instance()->delete_data(data_);
 }
 
@@ -129,36 +112,102 @@ void ReaderHandler::on_data_available(
         if (read_ret == eprosima::fastrtps::types::ReturnCode_t::RETCODE_OK &&
                 info.instance_state == eprosima::fastdds::dds::InstanceStateKind::ALIVE_INSTANCE_STATE)
         {
-            // Get timestamp
-            double timestamp = utils::get_timestamp_seconds_numeric_value(info.reception_timestamp);
-
-            // Get data in already created structures
-            utils::get_introspection_numeric_data(
-                numeric_data_info_,
-                data_,
-                numeric_data_);
-
-            utils::get_introspection_string_data(
-                string_data_info_,
-                data_,
-                string_data_);
-
-            // Get value maps from data and send callback if there are data
-            if (!numeric_data_.empty())
+            if (true == is_keyed_)
             {
-                listener_->on_double_data_read(
-                    numeric_data_,
-                    timestamp);
+                on_data_keyed(reader->get_topicdescription()->get_name(), info);
             }
-
-            // Same for strings
-            if (!string_data_.empty())
+            else
             {
-                listener_->on_string_data_read(
-                    string_data_,
-                    timestamp);
+                process_received_data(info);
             }
         }
+    }
+}
+
+void ReaderHandler::on_data_keyed(const std::string& topic_name,
+                                    const eprosima::fastdds::dds::SampleInfo& sample_info)
+{
+    // construct the key
+    std::map<eprosima::fastrtps::types::MemberId, eprosima::fastrtps::types::DynamicTypeMember*> members;
+    type_->get_all_members(members);
+    std::string key="/";
+    for (auto const& [memberId, member] : members)
+    {
+        // If member is a key then build up a new type instrospection for Plojuggler
+        if (member->key_annotation())
+        {
+            std::string key_value;
+            eprosima::fastrtps::types::MemberDescriptor member_descriptor = member->get_descriptor();
+            key +=  member_descriptor.get_name() + ": ";
+            // check return might have to change this for the return string or double
+            const auto member_kind = member_descriptor.get_kind();
+            if (true == utils::is_kind_string(member_kind))
+            {
+                key += utils::get_string_type_from_data(data_, memberId, member_kind) + ", ";
+            }
+            else if (true == utils::is_kind_numeric(member_kind))
+            {
+                key += std::to_string(utils::get_numeric_type_from_data(data_, memberId, member_kind)) + ", ";
+            }
+            else
+            {
+                WARNING("Member type unknown with name: " << member_descriptor.get_name());
+            }
+        }
+    }
+
+    // Once key is fully formed then we can check if we need a new type configuration
+    if (data_type_configurations_.find(data_->get_name() + key) == data_type_configurations_.end())
+    {
+        data_type_configurations_[data_->get_name() + key] = data_type_configurations_[data_->get_name()];
+        createTypeInstrospection(topic_name, key);
+        DEBUG("New topic instance received with key = " << key);
+    }
+
+    // Now we can process the data from members that are not keys
+    for (auto const& [memberId, member] : members)
+    {
+        if (false == member->key_annotation())
+        {
+            process_received_data(sample_info);
+        }
+        else
+        {
+            // Do nothing key is already processed
+        }
+    }
+}
+
+void ReaderHandler::process_received_data(const eprosima::fastdds::dds::SampleInfo& sample_info)
+{
+    // Get timestamp
+    double timestamp = utils::get_timestamp_seconds_numeric_value(sample_info.reception_timestamp);
+
+    // Get data in already created structures
+    utils::get_introspection_numeric_data(
+        numeric_data_info_,
+        data_,
+        numeric_data_);
+
+    utils::get_introspection_string_data(
+        string_data_info_,
+        data_,
+        string_data_);
+
+    // Get value maps from data and send callback if there are data
+    if (!numeric_data_.empty())
+    {
+        listener_->on_double_data_read(
+            numeric_data_,
+            timestamp);
+    }
+
+    // Same for strings
+    if (!string_data_.empty())
+    {
+        listener_->on_string_data_read(
+            string_data_,
+            timestamp);
     }
 }
 
@@ -174,6 +223,50 @@ const std::string& ReaderHandler::topic_name() const
 const std::string& ReaderHandler::type_name() const
 {
     return topic_->get_type_name();
+}
+
+
+////////////////////////////////////////////////////
+// AUXILIAR METHODS
+////////////////////////////////////////////////////
+
+void ReaderHandler::createTypeInstrospection(const std::string& topic_name, const std::string& key)
+{
+    std::string topic_key_names = topic_name + key;
+    if (data_type_configurations_.find(topic_key_names) == data_type_configurations_.end())
+    {
+        // Create the static structures to store the data introspection information AND the data itself
+        utils::get_introspection_type_names(
+            topic_key_names,
+            type_,
+            *data_type_configurations_[topic_key_names],
+            numeric_data_info_,
+            string_data_info_);
+
+        // Create the data structures so they are not copied in the future
+        for (const auto& info : numeric_data_info_)
+        {
+            numeric_data_.push_back({ std::get<0>(info), 0});
+        }
+        for (const auto& info : string_data_info_)
+        {
+            string_data_.push_back({ std::get<0>(info), "-"});
+        }
+
+        DEBUG("Reader created in topic: " << topic_key_names << " with types: ");
+        for (const auto& info : numeric_data_info_)
+        {
+            DEBUG("\tNumeric: " << std::get<0>(info));
+        }
+        for (const auto& info : string_data_info_)
+        {
+            DEBUG("\tString: " << std::get<0>(info));
+        }
+    }
+    else
+    {
+        WARNING("\tTrying to create data structure for a non selected topic");
+    }
 }
 
 ////////////////////////////////////////////////////
